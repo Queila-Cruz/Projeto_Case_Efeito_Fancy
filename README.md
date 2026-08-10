@@ -16,8 +16,16 @@ https://projetocaseefeitofancy-jgy8yg8tcl4ptpqhjbkhcf.streamlit.app/
 
 📁 Estrutura do RepositórioBash
 
+
+
+
+
 ├── data/                  # Datasets brutos e tratados (CSV)
+
 ├── notebooks/             # Scripts de tratamento de dados e merge (Google Colab)
+
 ├── dashboard_app.py       # Aplicação principal do Streamlit
+
 ├── requirements.txt       # Dependências do projeto
+
 └── README.md              # Documentação do projeto
