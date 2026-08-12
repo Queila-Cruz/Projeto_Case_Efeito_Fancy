@@ -83,24 +83,6 @@ st.markdown(
     "### Fancy Score, evidências matemáticas e recomendação de público-alvo"
 )
 
-st.sidebar.header("Filtros")
-
-arquivo_local = Path(ARQUIVO_PADRAO)
-
-if arquivo_local.exists():
-    df = carregar_dados(ARQUIVO_PADRAO)
-else:
-    upload = st.sidebar.file_uploader(
-        "Envie o arquivo CSV",
-        type=["csv"]
-    )
-
-    if upload is None:
-        st.info(
-            "Coloque o CSV no mesmo repositório do app ou envie o arquivo "
-            "pela barra lateral para iniciar a análise."
-        )
-        st.stop()
 
     df = carregar_dados(upload)
 
