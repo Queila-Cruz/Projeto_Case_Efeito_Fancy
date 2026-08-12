@@ -25,7 +25,7 @@ st.markdown(
 
 @st.cache_data
 def carregar_dados():
-    df = pd.read_csv("Dados completos-3.csv")
+    df = pd.read_csv("Dados atualizados.csv")
     return df
 
 df = carregar_dados()
