@@ -28,15 +28,12 @@ st.markdown(
 @st.cache_data
 def carregar_dados():
 
-    # Localiza o CSV na mesma pasta do aplicativo
     arquivo = Path(__file__).parent / "Dados atualizados.csv"
 
-    # Verifica se o arquivo existe
     if not arquivo.exists():
         st.error(
             "❌ O arquivo 'Dados atualizados.csv' não foi encontrado. "
-            "Verifique se ele está na mesma pasta do arquivo Fancy_efeito_app.py "
-            "e se foi enviado para o GitHub."
+            "Verifique se ele está no GitHub."
         )
         st.stop()
 
@@ -51,6 +48,18 @@ def carregar_dados():
             arquivo,
             encoding="latin1"
         )
+
+    except pd.errors.EmptyDataError:
+        st.error(
+            "❌ O arquivo CSV está vazio."
+        )
+        st.stop()
+
+    if df.empty:
+        st.error(
+            "❌ O CSV foi carregado, mas não possui registros."
+        )
+        st.stop()
 
     return df
 
@@ -67,7 +76,6 @@ colunas_necessarias = [
     "linha",
     "preco_venda",
     "quantidade",
-    "Margem de Lucro Bruto",
     "idade",
     "renda_mensal",
     "estado",
@@ -91,7 +99,7 @@ if colunas_faltantes:
     st.stop()
 
 # --------------------------------------------------
-# TRATAMENTO
+# TRATAMENTO DOS DADOS
 # --------------------------------------------------
 
 df["preco_venda"] = pd.to_numeric(
@@ -101,11 +109,6 @@ df["preco_venda"] = pd.to_numeric(
 
 df["quantidade"] = pd.to_numeric(
     df["quantidade"],
-    errors="coerce"
-)
-
-df["Margem de Lucro Bruto"] = pd.to_numeric(
-    df["Margem de Lucro Bruto"],
     errors="coerce"
 )
 
@@ -129,7 +132,10 @@ df = df.dropna(
     ]
 )
 
-# Receita
+# --------------------------------------------------
+# RECEITA
+# --------------------------------------------------
+
 df["receita"] = (
     df["preco_venda"] *
     df["quantidade"]
@@ -140,7 +146,11 @@ df["receita"] = (
 # --------------------------------------------------
 
 cliente = df.groupby("id_cliente").agg(
-    total_compras=("id_pedido", "count"),
+
+    total_compras=(
+        "id_pedido",
+        "count"
+    ),
 
     compras_fancy=(
         "linha",
@@ -154,11 +164,6 @@ cliente = df.groupby("id_cliente").agg(
 
     receita=(
         "receita",
-        "sum"
-    ),
-
-    margem=(
-        "Margem de Lucro Bruto",
         "sum"
     ),
 
@@ -205,19 +210,6 @@ cliente["ticket_medio"] = np.where(
     cliente["total_compras"] > 0,
     cliente["receita"] /
     cliente["total_compras"],
-    0
-)
-
-# --------------------------------------------------
-# MARGEM PERCENTUAL
-# --------------------------------------------------
-
-cliente["margem_percentual"] = np.where(
-    cliente["receita"] > 0,
-    (
-        cliente["margem"] /
-        cliente["receita"]
-    ) * 100,
     0
 )
 
@@ -278,7 +270,9 @@ st.divider()
 # 1. DISTRIBUIÇÃO DO FANCY SCORE
 # --------------------------------------------------
 
-st.subheader("1. Distribuição do Fancy Score")
+st.subheader(
+    "1. Distribuição do Fancy Score"
+)
 
 fig_score = px.histogram(
     cliente,
@@ -305,7 +299,9 @@ st.plotly_chart(
 # 2. CORRELAÇÃO FANCY SCORE X TICKET
 # --------------------------------------------------
 
-st.subheader("2. Fancy Score × Ticket Médio")
+st.subheader(
+    "2. Fancy Score × Ticket Médio"
+)
 
 dados_correlacao = cliente[
     [
@@ -330,13 +326,8 @@ fig_scatter = px.scatter(
     cliente,
     x="fancy_score",
     y="ticket_medio",
-
-    # Retirado o trendline="ols"
-    # para evitar dependência do statsmodels
     opacity=0.5,
-
     title="Relação entre Fancy Score e Ticket Médio",
-
     labels={
         "fancy_score": "Fancy Score (%)",
         "ticket_medio": "Ticket Médio (R$)"
@@ -419,7 +410,7 @@ else:
     diferenca_ticket = np.nan
 
 # --------------------------------------------------
-# CARDS DO EFEITO FANCY
+# CARDS
 # --------------------------------------------------
 
 col1, col2, col3 = st.columns(3)
@@ -462,6 +453,7 @@ col3.metric(
 # --------------------------------------------------
 
 comparacao = pd.DataFrame({
+
     "Grupo": [
         "Fancy Score ≥ 50%",
         "Fancy Score < 50%"
@@ -471,6 +463,7 @@ comparacao = pd.DataFrame({
         ticket_fancy,
         ticket_padrao
     ]
+
 })
 
 fig_comparacao = px.bar(
@@ -513,6 +506,7 @@ st.subheader(
 )
 
 cliente["faixa_etaria"] = pd.cut(
+
     cliente["idade"],
 
     bins=[
@@ -558,11 +552,6 @@ segmento = cliente.groupby(
     ticket_medio=(
         "ticket_medio",
         "mean"
-    ),
-
-    margem_media=(
-        "margem",
-        "mean"
     )
 
 ).reset_index()
@@ -573,13 +562,15 @@ segmento = segmento.sort_values(
 )
 
 # --------------------------------------------------
-# GRÁFICO DOS SEGMENTOS
+# GRÁFICO
 # --------------------------------------------------
 
 fig_segmento = px.bar(
+
     segmento.head(10),
 
     x="fancy_score",
+
     y="canal_aquisicao",
 
     color="faixa_etaria",
@@ -589,9 +580,16 @@ fig_segmento = px.bar(
     title="Top 10 segmentos por Fancy Score",
 
     labels={
-        "fancy_score": "Fancy Score médio (%)",
-        "canal_aquisicao": "Canal",
-        "faixa_etaria": "Faixa etária"
+
+        "fancy_score":
+        "Fancy Score médio (%)",
+
+        "canal_aquisicao":
+        "Canal",
+
+        "faixa_etaria":
+        "Faixa etária"
+
     }
 )
 
