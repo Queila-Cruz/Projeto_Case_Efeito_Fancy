@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import numpy as np
+from pathlib import Path
 
 # --------------------------------------------------
 # CONFIGURAÇÃO
@@ -14,6 +15,7 @@ st.set_page_config(
 )
 
 st.title("✨ Análise do Efeito Fancy")
+
 st.markdown(
     "Dashboard para análise do comportamento de compra de produtos "
     "da linha Fancy e identificação do público-alvo."
@@ -25,16 +27,113 @@ st.markdown(
 
 @st.cache_data
 def carregar_dados():
-    df = pd.read_csv("Dados atualizados.csv")
+
+    # Localiza o CSV na mesma pasta do aplicativo
+    arquivo = Path(__file__).parent / "Dados atualizados.csv"
+
+    # Verifica se o arquivo existe
+    if not arquivo.exists():
+        st.error(
+            "❌ O arquivo 'Dados atualizados.csv' não foi encontrado. "
+            "Verifique se ele está na mesma pasta do arquivo Fancy_efeito_app.py "
+            "e se foi enviado para o GitHub."
+        )
+        st.stop()
+
+    try:
+        df = pd.read_csv(
+            arquivo,
+            encoding="utf-8-sig"
+        )
+
+    except UnicodeDecodeError:
+        df = pd.read_csv(
+            arquivo,
+            encoding="latin1"
+        )
+
     return df
 
+
 df = carregar_dados()
+
+# --------------------------------------------------
+# VERIFICAÇÃO DAS COLUNAS
+# --------------------------------------------------
+
+colunas_necessarias = [
+    "id_cliente",
+    "id_pedido",
+    "linha",
+    "preco_venda",
+    "quantidade",
+    "Margem de Lucro Bruto",
+    "idade",
+    "renda_mensal",
+    "estado",
+    "canal_aquisicao"
+]
+
+colunas_faltantes = [
+    coluna
+    for coluna in colunas_necessarias
+    if coluna not in df.columns
+]
+
+if colunas_faltantes:
+
+    st.error(
+        "❌ As seguintes colunas não foram encontradas no CSV:"
+    )
+
+    st.write(colunas_faltantes)
+
+    st.stop()
 
 # --------------------------------------------------
 # TRATAMENTO
 # --------------------------------------------------
 
-df["receita"] = df["preco_venda"] * df["quantidade"]
+df["preco_venda"] = pd.to_numeric(
+    df["preco_venda"],
+    errors="coerce"
+)
+
+df["quantidade"] = pd.to_numeric(
+    df["quantidade"],
+    errors="coerce"
+)
+
+df["Margem de Lucro Bruto"] = pd.to_numeric(
+    df["Margem de Lucro Bruto"],
+    errors="coerce"
+)
+
+df["idade"] = pd.to_numeric(
+    df["idade"],
+    errors="coerce"
+)
+
+df["renda_mensal"] = pd.to_numeric(
+    df["renda_mensal"],
+    errors="coerce"
+)
+
+# Remove registros sem dados essenciais
+df = df.dropna(
+    subset=[
+        "id_cliente",
+        "id_pedido",
+        "preco_venda",
+        "quantidade"
+    ]
+)
+
+# Receita
+df["receita"] = (
+    df["preco_venda"] *
+    df["quantidade"]
+)
 
 # --------------------------------------------------
 # FANCY SCORE POR CLIENTE
@@ -42,44 +141,109 @@ df["receita"] = df["preco_venda"] * df["quantidade"]
 
 cliente = df.groupby("id_cliente").agg(
     total_compras=("id_pedido", "count"),
-    compras_fancy=("linha", lambda x: (x == "Fancy").sum()),
-    quantidade_total=("quantidade", "sum"),
-    receita=("receita", "sum"),
-    margem=("Margem de Lucro Bruto", "sum"),
-    idade=("idade", "first"),
-    renda_mensal=("renda_mensal", "first"),
-    estado=("estado", "first"),
-    canal_aquisicao=("canal_aquisicao", "first")
+
+    compras_fancy=(
+        "linha",
+        lambda x: (x == "Fancy").sum()
+    ),
+
+    quantidade_total=(
+        "quantidade",
+        "sum"
+    ),
+
+    receita=(
+        "receita",
+        "sum"
+    ),
+
+    margem=(
+        "Margem de Lucro Bruto",
+        "sum"
+    ),
+
+    idade=(
+        "idade",
+        "first"
+    ),
+
+    renda_mensal=(
+        "renda_mensal",
+        "first"
+    ),
+
+    estado=(
+        "estado",
+        "first"
+    ),
+
+    canal_aquisicao=(
+        "canal_aquisicao",
+        "first"
+    )
+
 ).reset_index()
 
-cliente["fancy_score"] = (
-    cliente["compras_fancy"] /
-    cliente["total_compras"]
-) * 100
+# --------------------------------------------------
+# FANCY SCORE
+# --------------------------------------------------
 
-cliente["ticket_medio"] = (
-    cliente["receita"] /
-    cliente["total_compras"]
+cliente["fancy_score"] = np.where(
+    cliente["total_compras"] > 0,
+    (
+        cliente["compras_fancy"] /
+        cliente["total_compras"]
+    ) * 100,
+    0
 )
 
-cliente["margem_percentual"] = (
-    cliente["margem"] /
-    cliente["receita"]
-) * 100
+# --------------------------------------------------
+# TICKET MÉDIO
+# --------------------------------------------------
+
+cliente["ticket_medio"] = np.where(
+    cliente["total_compras"] > 0,
+    cliente["receita"] /
+    cliente["total_compras"],
+    0
+)
+
+# --------------------------------------------------
+# MARGEM PERCENTUAL
+# --------------------------------------------------
+
+cliente["margem_percentual"] = np.where(
+    cliente["receita"] > 0,
+    (
+        cliente["margem"] /
+        cliente["receita"]
+    ) * 100,
+    0
+)
 
 # --------------------------------------------------
 # KPIs
 # --------------------------------------------------
 
-total_clientes = cliente["id_cliente"].nunique()
+total_clientes = (
+    cliente["id_cliente"].nunique()
+)
 
-fancy_score_medio = cliente["fancy_score"].mean()
+fancy_score_medio = (
+    cliente["fancy_score"].mean()
+)
 
-ticket_medio = cliente["ticket_medio"].mean()
+ticket_medio = (
+    cliente["ticket_medio"].mean()
+)
 
 participacao_fancy = (
-    (df["linha"] == "Fancy").mean() * 100
-)
+    (df["linha"] == "Fancy").mean()
+) * 100
+
+# --------------------------------------------------
+# CARDS
+# --------------------------------------------------
 
 col1, col2, col3, col4 = st.columns(4)
 
@@ -95,7 +259,12 @@ col2.metric(
 
 col3.metric(
     "Ticket médio",
-    f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    (
+        f"R$ {ticket_medio:,.2f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
+    )
 )
 
 col4.metric(
@@ -106,7 +275,7 @@ col4.metric(
 st.divider()
 
 # --------------------------------------------------
-# DISTRIBUIÇÃO DO FANCY SCORE
+# 1. DISTRIBUIÇÃO DO FANCY SCORE
 # --------------------------------------------------
 
 st.subheader("1. Distribuição do Fancy Score")
@@ -127,43 +296,78 @@ fig_score.update_layout(
     yaxis_title="Clientes"
 )
 
-st.plotly_chart(fig_score, use_container_width=True)
+st.plotly_chart(
+    fig_score,
+    use_container_width=True
+)
 
 # --------------------------------------------------
-# CORRELAÇÃO FANCY SCORE X TICKET
+# 2. CORRELAÇÃO FANCY SCORE X TICKET
 # --------------------------------------------------
 
 st.subheader("2. Fancy Score × Ticket Médio")
 
-correlacao = cliente[
-    ["fancy_score", "ticket_medio"]
-].corr().iloc[0, 1]
+dados_correlacao = cliente[
+    [
+        "fancy_score",
+        "ticket_medio"
+    ]
+].dropna()
+
+if len(dados_correlacao) > 1:
+
+    correlacao = (
+        dados_correlacao
+        .corr()
+        .iloc[0, 1]
+    )
+
+else:
+
+    correlacao = np.nan
 
 fig_scatter = px.scatter(
     cliente,
     x="fancy_score",
     y="ticket_medio",
-    trendline="ols",
+
+    # Retirado o trendline="ols"
+    # para evitar dependência do statsmodels
     opacity=0.5,
+
     title="Relação entre Fancy Score e Ticket Médio",
+
     labels={
         "fancy_score": "Fancy Score (%)",
         "ticket_medio": "Ticket Médio (R$)"
     }
 )
 
-st.plotly_chart(fig_scatter, use_container_width=True)
-
-st.info(
-    f"Correlação entre Fancy Score e Ticket Médio: "
-    f"{correlacao:.3f}"
+st.plotly_chart(
+    fig_scatter,
+    use_container_width=True
 )
 
+if pd.notna(correlacao):
+
+    st.info(
+        f"Correlação entre Fancy Score e Ticket Médio: "
+        f"{correlacao:.3f}"
+    )
+
+else:
+
+    st.warning(
+        "Não foi possível calcular a correlação."
+    )
+
 # --------------------------------------------------
-# TESTE DO EFEITO FANCY
+# 3. TESTE DO EFEITO FANCY
 # --------------------------------------------------
 
-st.subheader("3. Evidência matemática do Efeito Fancy")
+st.subheader(
+    "3. Evidência matemática do Efeito Fancy"
+)
 
 cliente["grupo_fancy"] = np.where(
     cliente["fancy_score"] >= 50,
@@ -179,35 +383,90 @@ grupo_padrao = cliente[
     cliente["grupo_fancy"] == "Fancy Score < 50%"
 ]
 
-ticket_fancy = grupo_fancy["ticket_medio"].mean()
-ticket_padrao = grupo_padrao["ticket_medio"].mean()
+ticket_fancy = (
+    grupo_fancy["ticket_medio"].mean()
+    if not grupo_fancy.empty
+    else np.nan
+)
 
-diferenca_ticket = (
-    (ticket_fancy / ticket_padrao) - 1
-) * 100
+ticket_padrao = (
+    grupo_padrao["ticket_medio"].mean()
+    if not grupo_padrao.empty
+    else np.nan
+)
+
+# --------------------------------------------------
+# DIFERENÇA
+# --------------------------------------------------
+
+if (
+    pd.notna(ticket_fancy)
+    and
+    pd.notna(ticket_padrao)
+    and
+    ticket_padrao != 0
+):
+
+    diferenca_ticket = (
+        (
+            ticket_fancy /
+            ticket_padrao
+        ) - 1
+    ) * 100
+
+else:
+
+    diferenca_ticket = np.nan
+
+# --------------------------------------------------
+# CARDS DO EFEITO FANCY
+# --------------------------------------------------
 
 col1, col2, col3 = st.columns(3)
 
 col1.metric(
     "Ticket — Fancy ≥ 50%",
-    f"R$ {ticket_fancy:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    (
+        f"R$ {ticket_fancy:,.2f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
+        if pd.notna(ticket_fancy)
+        else "N/A"
+    )
 )
 
 col2.metric(
     "Ticket — Fancy < 50%",
-    f"R$ {ticket_padrao:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    (
+        f"R$ {ticket_padrao:,.2f}"
+        .replace(",", "X")
+        .replace(".", ",")
+        .replace("X", ".")
+        if pd.notna(ticket_padrao)
+        else "N/A"
+    )
 )
 
 col3.metric(
     "Diferença",
-    f"+{diferenca_ticket:.1f}%"
+    (
+        f"{diferenca_ticket:+.1f}%"
+        if pd.notna(diferenca_ticket)
+        else "N/A"
+    )
 )
+
+# --------------------------------------------------
+# COMPARAÇÃO
+# --------------------------------------------------
 
 comparacao = pd.DataFrame({
     "Grupo": [
         "Fancy Score ≥ 50%",
         "Fancy Score < 50%"
     ],
+
     "Ticket Médio": [
         ticket_fancy,
         ticket_padrao
@@ -227,37 +486,85 @@ st.plotly_chart(
     use_container_width=True
 )
 
-st.success(
-    f"Clientes com Fancy Score ≥ 50% apresentam ticket médio "
-    f"{diferenca_ticket:.1f}% maior que os demais clientes."
+if pd.notna(diferenca_ticket):
+
+    if diferenca_ticket >= 0:
+
+        st.success(
+            f"Clientes com Fancy Score ≥ 50% apresentam "
+            f"ticket médio {diferenca_ticket:.1f}% maior "
+            f"que os demais clientes."
+        )
+
+    else:
+
+        st.warning(
+            f"Clientes com Fancy Score ≥ 50% apresentam "
+            f"ticket médio {abs(diferenca_ticket):.1f}% menor "
+            f"que os demais clientes."
+        )
+
+# --------------------------------------------------
+# 4. PÚBLICO-ALVO
+# --------------------------------------------------
+
+st.subheader(
+    "4. Público-alvo recomendado para Marketing"
 )
-
-# --------------------------------------------------
-# PÚBLICO-ALVO
-# --------------------------------------------------
-
-st.subheader("4. Público-alvo recomendado para Marketing")
 
 cliente["faixa_etaria"] = pd.cut(
     cliente["idade"],
-    bins=[17, 24, 34, 44, 54, 69],
+
+    bins=[
+        17,
+        24,
+        34,
+        44,
+        54,
+        69,
+        np.inf
+    ],
+
     labels=[
         "18–24",
         "25–34",
         "35–44",
         "45–54",
-        "55–69"
-    ]
+        "55–69",
+        "70+"
+    ],
+
+    include_lowest=True
 )
 
 segmento = cliente.groupby(
-    ["canal_aquisicao", "faixa_etaria"],
+    [
+        "canal_aquisicao",
+        "faixa_etaria"
+    ],
     observed=True
 ).agg(
-    clientes=("id_cliente", "count"),
-    fancy_score=("fancy_score", "mean"),
-    ticket_medio=("ticket_medio", "mean"),
-    margem_media=("margem", "mean")
+
+    clientes=(
+        "id_cliente",
+        "count"
+    ),
+
+    fancy_score=(
+        "fancy_score",
+        "mean"
+    ),
+
+    ticket_medio=(
+        "ticket_medio",
+        "mean"
+    ),
+
+    margem_media=(
+        "margem",
+        "mean"
+    )
+
 ).reset_index()
 
 segmento = segmento.sort_values(
@@ -265,13 +572,22 @@ segmento = segmento.sort_values(
     ascending=False
 )
 
+# --------------------------------------------------
+# GRÁFICO DOS SEGMENTOS
+# --------------------------------------------------
+
 fig_segmento = px.bar(
     segmento.head(10),
+
     x="fancy_score",
     y="canal_aquisicao",
+
     color="faixa_etaria",
+
     orientation="h",
+
     title="Top 10 segmentos por Fancy Score",
+
     labels={
         "fancy_score": "Fancy Score médio (%)",
         "canal_aquisicao": "Canal",
@@ -284,23 +600,46 @@ st.plotly_chart(
     use_container_width=True
 )
 
-st.markdown("### 🎯 Recomendação de Marketing")
+# --------------------------------------------------
+# RECOMENDAÇÃO DE MARKETING
+# --------------------------------------------------
 
-st.write(
-    """
-    Os dados indicam maior afinidade com produtos Fancy entre consumidores
-    de 18 a 34 anos, principalmente nos canais Instagram e TikTok.
-
-    Portanto, recomenda-se priorizar campanhas nesses canais e faixas etárias,
-    utilizando produtos Fancy como elemento central da comunicação.
-    """
+st.markdown(
+    "### 🎯 Recomendação de Marketing"
 )
 
+if not segmento.empty:
+
+    principal = segmento.iloc[0]
+
+    st.write(
+        f"""
+        O segmento com maior Fancy Score médio é composto por
+        consumidores da faixa etária **{principal['faixa_etaria']}**,
+        no canal **{principal['canal_aquisicao']}**.
+
+        Esse segmento apresenta Fancy Score médio de
+        **{principal['fancy_score']:.1f}%** e ticket médio de
+        **R$ {principal['ticket_medio']:,.2f}**.
+
+        Esses dados podem ser utilizados como referência para
+        direcionar campanhas de marketing e estratégias de comunicação.
+        """
+    )
+
+else:
+
+    st.warning(
+        "Não existem dados suficientes para gerar uma recomendação."
+    )
+
 # --------------------------------------------------
-# TABELA DE SEGMENTOS
+# 5. TABELA DE SEGMENTOS
 # --------------------------------------------------
 
-st.subheader("5. Ranking de segmentos")
+st.subheader(
+    "5. Ranking de segmentos"
+)
 
 st.dataframe(
     segmento,
